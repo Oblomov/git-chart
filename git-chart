@@ -1,5 +1,16 @@
 #!/usr/bin/perl
 
+# List of general TODO
+# * autodetect optimal frequency depending on date range for commits
+# * default to something else than "the whole history", probably
+# * if no commits are specified and a commit grouping step is specified,
+#   limit commits proportionally (e.g. --daily => one week worth of commits)
+# * find a better way to group commits, the current is a little too inaccurate
+#
+# Most of the mentioned TODOs require either some peeking at the commits
+# or some other form of pre/post-processing. For both it's probably better
+# to just slurp them at once and then think about the grouping
+
 use strict;
 use warnings;
 use POSIX qw(ceil);
@@ -17,6 +28,7 @@ my %steps = (
 );
 
 sub usage() {
+	# TODO
 	print "Usage: git chart\n";
 }
 
