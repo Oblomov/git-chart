@@ -13,6 +13,7 @@ my %steps = (
 	daily => $SECS_PER_DAY,
 	weekly => 7*$SECS_PER_DAY,
 	monthly => 30*$SECS_PER_DAY,
+	yearly => 12*30*$SECS_PER_DAY,
 );
 
 sub usage() {
@@ -133,7 +134,10 @@ sub gnuplot_chart($;$) {
 	$plotsetup .= "\nset yrange [0:$max]\n";
 	$plotsetup .= "set xrange ['$from':'$to']\n";
 	my ($formatx, $ticks);
-	if ($to - $from > $steps{monthly}) {
+	if ($to - $from > $steps{yearly}) {
+		$formatx = "%Y";
+		$ticks = $steps{yearly};
+	} elsif ($to - $from > $steps{monthly}) {
 		$formatx = "%b\\n%Y";
 		$ticks = $steps{monthly};
 	} elsif ($to - $from > 2*$steps{daily}) {
@@ -207,6 +211,7 @@ GetOptions(
 	'daily' => \&parse_step,
 	'weekly' => \&parse_step,
 	'monthly' => \&parse_step,
+	'yearly' => \&parse_step,
 	'step=s' => sub { parse_step(@_) },
 	'chart-height=i' => sub { $options{chart_height} = $_[1]},
 	google => sub { $options{plotter} = \&google_chart },
