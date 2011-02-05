@@ -36,11 +36,15 @@ sub gather_data($) {
 	return \@dataset;
 }
 
-# plot the dataset with google chart. the function can be called with either one or two parameters.
+# functions to plot the datasets.
+# each function can be called with either one or two parameters.
 # when called with two parameters, the first is assumed to be the dataset, and the second the options
 # (array and hash ref respectively).
 # when called with a single parameter, it is assumed to be an options hash ref, and the dataset is 
 # created by calling gather_data with the passed options.
+
+# google chart API
+# TODO needs a lot of customization
 sub google_chart($;$) {
 	my $dataset = shift;
 	my $options = shift;
@@ -61,6 +65,41 @@ sub google_chart($;$) {
 	my $launch = sprintf $url, join(",",reverse @$dataset);
 	# print $launch, "\n";
 	`git web--browse "$launch"`
+}
+
+# gnuplot
+sub gnuplot_chart($;$) {
+	my $dataset = shift;
+	my $options = shift;
+	if (! defined $options) {
+		$options = $dataset;
+		$dataset = gather_data($options);
+	}
+
+	my $max = $options->{max};
+	my $from = $options->{from};
+	my $to = $options->{to};
+	my $step = $options->{step};
+
+	# TODO allow customization
+	# in particular, detect (lack of) display and set term to dumb accordingly
+	my $termcmd = $options->{gnuplot_term};
+	my $plotsetup = $options->{gnuplot_setup};
+	$plotsetup .="\nset yrange [0:$max]\nset xrange [$from:$to]";
+	my $plotstyle = $options->{gnuplot_style};
+	my $plotoptions = $options->{gnuplot_plotwith};
+	my $data = join("\n", reverse @$dataset);
+
+	open my $gp, "|gnuplot -persist";
+
+	print $gp <<GPCMD
+	$termcmd
+	$plotsetup
+	$plotstyle
+	plot "-" $plotoptions
+	$data
+GPCMD
+
 }
 
 sub parse_from($) {
@@ -99,7 +138,12 @@ my %options = (
 	from => 0,
 	to => 31,
 	step => 1,
+	# charting/plotting options
 	chart_height => 144,
+	gnuplot_term => '',
+	gnuplot_setup => "set nokey",
+	gnuplot_style => 'set style fill solid 1.0 border -1',
+	gnuplot_plotwith => 'with boxes',
 );
 
 my $daily=0;
@@ -137,4 +181,4 @@ $options{step} = parse_step($step) if $step;
 
 die "step must be strictly positive!" unless $options{step} > 0;
 
-google_chart(\%options);
+gnuplot_chart(\%options);
