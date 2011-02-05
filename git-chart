@@ -1,0 +1,140 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+use POSIX qw(ceil);
+use Getopt::Long;
+
+sub usage() {
+	print "Usage: git chart\n";
+}
+
+sub gather_data($) {
+	my $options = shift;
+	my @dataset;
+
+	print "Gathering data ...\n";
+
+	my $day=$options->{from};
+	my $to =$options->{to};
+	my $step=$options->{step};
+	my $max=$options->{max} || 0;
+
+	while ($day < $to) {
+		my $next = $day + $step;
+		my $val = `git log --pretty=%s --since="$next days ago" --until="$day days ago" | wc -l`;
+		chomp $val;
+		push @dataset, $val;
+		$max = $val if $max < $val;
+		$day = $next;
+	}
+
+	$options->{max} = $max;
+
+	print "...done\n";
+
+	return \@dataset;
+}
+
+# plot the dataset with google chart. the function can be called with either one or two parameters.
+# when called with two parameters, the first is assumed to be the dataset, and the second the options
+# (array and hash ref respectively).
+# when called with a single parameter, it is assumed to be an options hash ref, and the dataset is 
+# created by calling gather_data with the passed options.
+sub google_chart($;$) {
+	my $dataset = shift;
+	my $options = shift;
+	if (! defined $options) {
+		$options = $dataset;
+		$dataset = gather_data($options);
+	}
+
+	my $height=$options->{chart_height};
+	my $max = $options->{max};
+	my $from = $options->{from};
+	my $to = $options->{to};
+	my $step = $options->{step};
+	my $width=($step < 20 ? 20 : $step)*@$dataset;
+
+	my $url="https://chart.googleapis.com/chart?chs=${width}x${height}&cht=bvg&chd=t:%s&chds=0,$max&chbh=a&chxt=y,x&chxr=0,0,$max|1,$to,$from,-$step";
+
+	my $launch = sprintf $url, join(",",reverse @$dataset);
+	# print $launch, "\n";
+	`git web--browse "$launch"`
+}
+
+sub parse_from($) {
+	my $from = shift;
+	if ($from =~/^\d+$/) {
+		return 0 + $from;
+	} else {
+		# TODO
+		warn "non-numeric from not supported yet\n";
+	}
+}
+
+sub parse_to($) {
+	my $to = shift;
+	if ($to =~/^\d+$/) {
+		return 0 + $to;
+	} else {
+		# TODO
+		warn "non-numeric to not supported yet\n";
+	}
+}
+
+sub parse_step($) {
+	my $step = shift;
+	if ($step =~/^\d+$/) {
+		return 0 + $step;
+	} else {
+		return 1 if $step eq 'daily';
+		return 7 if $step eq 'weekly';
+		return 30 if $step eq 'monthly';
+	}
+}
+
+# some defaults
+my %options = (
+	from => 0,
+	to => 31,
+	step => 1,
+	chart_height => 144,
+);
+
+my $daily=0;
+my $weekly=0;
+my $monthly=0;
+
+my $from=0;
+my $to=0;
+my $step=0;
+
+GetOptions(
+	daily => \$daily,
+	weekly => \$weekly,
+	monthly => \$monthly,
+	'from=s' => \$from,
+	'to=s' => \$to,
+	'step=s' => \$step,
+);
+
+$options{from} = parse_from($from) if $from;
+
+if ($monthly) {
+	$options{to} = $options{from} + 365;
+	$options{step} = 30;
+} elsif ($weekly) {
+	$options{to} = $options{from} + 6*30;
+	$options{step} = 30;
+} elsif ($daily) {
+	$options{to} = $options{from} + 31;
+	$options{step} = 1;
+}
+
+$options{to} = parse_to($to) if $to;
+$options{step} = parse_step($step) if $step;
+
+die "step must be strictly positive!" unless $options{step} > 0;
+
+google_chart(\%options);
