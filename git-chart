@@ -12,62 +12,48 @@ sub usage() {
 
 sub gather_data($) {
 	my $options = shift;
-	my %perday;
+	my %dataset;
 
 	print "Gathering data ...\n";
 
 	my $groups = 0;
 	my $commits = 0;
-	open my $fd, '-|', qw(git log --date=short), '--pretty=%ad,%s', @{$options->{cmdline}};
+
+	my $step=$options->{step}*24*3600; # days to seconds
+
+	open my $fd, '-|', qw(git log --date=raw), '--pretty=%ad %s', @{$options->{cmdline}};
 	die "failed to get revs" unless $fd;
 	while (<$fd>) {
 		chomp;
 		$commits += 1;
-		my ($date, $sub) = split ',', $_, 2;
-		if (exists $perday{$date}) {
-			$perday{$date} += 1;
+		my ($date, $tz, $sub) = split ' ', $_, 3;
+		# TODO use $tz
+
+		my $key = $date - ($date % $step);
+		if (exists $dataset{$key}) {
+			$dataset{$key} += 1;
 		} else {
-			$perday{$date} = 1;
+			$dataset{$key} = 1;
 			$groups += 1;
 		}
 	}
 	close $fd;
 
-	print "...done, $commits commits in $groups days. Grouping\n";
+	print "...done, $commits commits in $groups groups.\n";
 
-	my $step=$options->{step}*24*3600; # days to seconds
-
-	my @keys = sort keys %perday;
-	my $from = $keys[0];
-	my $to = $keys[@keys-1];
-
-	my %dataset ;
-	my $first;
-	my $next;
-	my $val = 0;
+	# fill missing steps and find max
+	my @keys = sort keys %dataset;
+	my $last = pop @keys;
 	my $max = 0;
 	while (my $key = shift @keys) {
-		my $day = str2time($key);
-		unless ($first) {
-			$first = $day;
-			$next = $first + $step;
-		}
-		if ($day < $next) {
-			$val += $perday{$key};
-		} else {
-			# TODO what do we put as key?
-			$dataset{$first} = $val;
-			$max = $val if $max < $val;
-			while ($day >= $next) {
-				$first = $next;
-				$next = $first + $step;
-				$dataset{$first} = 0 unless $day < $next;
-			}
-			$val = $perday{$key};
+		$max = $dataset{$key} if $max < $dataset{$key};
+		my $next = $key + $step;
+		while (! exists $dataset{$next}) {
+			$dataset{$next} = 0;
+			$next += $step;
+			last if $next >= $last;
 		}
 	}
-	$dataset{$first} = $val;
-	$max = $val if $max < $val;
 
 	$options->{max} = $max;
 	return \%dataset;
@@ -205,7 +191,7 @@ GetOptions(
 	'weekly' => \&parse_step,
 	'monthly' => \&parse_step,
 	'step=s' => sub { parse_step(@_) },
-	'chart-height=i' => sub { $options{chart_height} = @_[1]},
+	'chart-height=i' => sub { $options{chart_height} = $_[1]},
 	google => sub { $options{plotter} = \&google_chart },
 	gnuplot => sub { $options{plotter} = \&gnuplot_chart },
 );
