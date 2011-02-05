@@ -205,6 +205,7 @@ GetOptions(
 	'weekly' => \&parse_step,
 	'monthly' => \&parse_step,
 	'step=s' => sub { parse_step(@_) },
+	'chart-height=i' => sub { $options{chart_height} = @_[1]},
 	google => sub { $options{plotter} = \&google_chart },
 	gnuplot => sub { $options{plotter} = \&gnuplot_chart },
 );
