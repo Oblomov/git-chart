@@ -6,6 +6,15 @@ use POSIX qw(ceil);
 use Getopt::Long;
 use Date::Parse;
 
+my $SECS_PER_DAY = 24*3600;
+
+my %steps = (
+	hourly => 3600,
+	daily => $SECS_PER_DAY,
+	weekly => 7*$SECS_PER_DAY,
+	monthly => 30*$SECS_PER_DAY,
+);
+
 sub usage() {
 	print "Usage: git chart\n";
 }
@@ -19,7 +28,7 @@ sub gather_data($) {
 	my $groups = 0;
 	my $commits = 0;
 
-	my $step=$options->{step}*24*3600; # days to seconds
+	my $step=$options->{step};
 
 	open my $fd, '-|', qw(git log --date=raw), '--pretty=%ad %s', @{$options->{cmdline}};
 	die "failed to get revs" unless $fd;
@@ -107,6 +116,7 @@ sub gnuplot_chart($;$) {
 	}
 
 	my @keys = sort keys %$dataset;
+	my $step=$options->{step};
 	my $from = $keys[0];
 	my $to = $keys[@keys-1];
 	my $data = '';
@@ -122,6 +132,19 @@ sub gnuplot_chart($;$) {
 	my $plotsetup = $options->{gnuplot_setup};
 	$plotsetup .= "\nset yrange [0:$max]\n";
 	$plotsetup .= "set xrange ['$from':'$to']\n";
+	my ($formatx, $ticks);
+	if ($to - $from > $steps{monthly}) {
+		$formatx = "%b\\n%Y";
+		$ticks = $steps{monthly};
+	} elsif ($to - $from > 2*$steps{daily}) {
+		$formatx = "%d\\n%b";
+		$ticks = $steps{daily};
+	} else {
+		$formatx = "%H:%M";
+		$ticks = $steps{hourly};
+	}
+	$plotsetup .= "set format x \"$formatx\"\n";
+	$plotsetup .= "set xtics $ticks\n";
 	my $plotstyle = $options->{gnuplot_style};
 	my $plotoptions = $options->{gnuplot_plotwith};
 
@@ -131,7 +154,6 @@ sub gnuplot_chart($;$) {
 $termcmd
 set xdata time
 set timefmt "%s"
-set format x "%b\\n%Y"
 $plotsetup
 $plotstyle
 plot "-" using 1:2 $plotoptions
@@ -146,7 +168,7 @@ GPCMD
 
 # some defaults
 my %options = (
-	step => 1,
+	step => $SECS_PER_DAY,
 	cmdline => [],
 	# charting/plotting options
 	plotter => \&gnuplot_chart,
@@ -155,12 +177,6 @@ my %options = (
 	gnuplot_setup => "set nokey",
 	gnuplot_style => 'set style data histeps',
 	gnuplot_plotwith => '',
-);
-
-my %steps = (
-	daily => 1,
-	weekly => 7,
-	monthly => 30,
 );
 
 sub parse_step(@) {
@@ -187,6 +203,7 @@ sub parse_step(@) {
 # read our options first
 Getopt::Long::Configure('pass_through');
 GetOptions(
+	'hourly' => \&parse_step,
 	'daily' => \&parse_step,
 	'weekly' => \&parse_step,
 	'monthly' => \&parse_step,
