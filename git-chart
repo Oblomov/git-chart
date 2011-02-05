@@ -4,6 +4,7 @@ use strict;
 use warnings;
 use POSIX qw(ceil);
 use Getopt::Long;
+use Date::Parse;
 
 sub usage() {
 	print "Usage: git chart\n";
@@ -11,29 +12,65 @@ sub usage() {
 
 sub gather_data($) {
 	my $options = shift;
-	my @dataset;
+	my %perday;
 
 	print "Gathering data ...\n";
 
-	my $day=$options->{from};
-	my $to =$options->{to};
-	my $step=$options->{step};
-	my $max=$options->{max} || 0;
-
-	while ($day < $to) {
-		my $next = $day + $step;
-		my $val = `git log --pretty=%s --since="$next days ago" --until="$day days ago" | wc -l`;
-		chomp $val;
-		push @dataset, $val;
-		$max = $val if $max < $val;
-		$day = $next;
+	my $groups = 0;
+	my $commits = 0;
+	open my $fd, '-|', qw(git log --date=short), '--pretty=%ad,%s', @{$options->{cmdline}};
+	die "failed to get revs" unless $fd;
+	while (<$fd>) {
+		chomp;
+		$commits += 1;
+		my ($date, $sub) = split ',', $_, 2;
+		if (exists $perday{$date}) {
+			$perday{$date} += 1;
+		} else {
+			$perday{$date} = 1;
+			$groups += 1;
+		}
 	}
+	close $fd;
+
+	print "...done, $commits commits in $groups days. Grouping\n";
+
+	my $step=$options->{step}*24*3600; # days to seconds
+
+	my @keys = sort keys %perday;
+	my $from = $keys[0];
+	my $to = $keys[@keys-1];
+
+	my %dataset ;
+	my $first;
+	my $next;
+	my $val = 0;
+	my $max = 0;
+	while (my $key = shift @keys) {
+		my $day = str2time($key);
+		unless ($first) {
+			$first = $day;
+			$next = $first + $step;
+		}
+		if ($day < $next) {
+			$val += $perday{$key};
+		} else {
+			# TODO what do we put as key?
+			$dataset{$first} = $val;
+			$max = $val if $max < $val;
+			while ($day >= $next) {
+				$first = $next;
+				$next = $first + $step;
+				$dataset{$first} = 0 unless $day < $next;
+			}
+			$val = $perday{$key};
+		}
+	}
+	$dataset{$first} = $val;
+	$max = $val if $max < $val;
 
 	$options->{max} = $max;
-
-	print "...done\n";
-
-	return \@dataset;
+	return \%dataset;
 }
 
 # functions to plot the datasets.
@@ -55,16 +92,23 @@ sub google_chart($;$) {
 
 	my $height=$options->{chart_height};
 	my $max = $options->{max};
-	my $from = $options->{from};
-	my $to = $options->{to};
-	my $step = $options->{step};
-	my $width=($step < 20 ? 20 : $step)*@$dataset;
 
-	my $url="https://chart.googleapis.com/chart?chs=${width}x${height}&cht=bvg&chd=t:%s&chds=0,$max&chbh=a&chxt=y,x&chxr=0,0,$max|1,$to,$from,-$step";
+	my @keys = sort keys %$dataset;
+	my $from = $keys[0];
+	my $to = $keys[@keys-1];
 
-	my $launch = sprintf $url, join(",",reverse @$dataset);
-	# print $launch, "\n";
-	`git web--browse "$launch"`
+	my @data;
+	while (my $key = shift @keys) {
+		push @data, $dataset->{$key};
+	}
+
+	my $width=ceil(4*$height/3);
+
+	my $url="https://chart.googleapis.com/chart?chs=${width}x${height}&cht=bvg&chd=t:%s&chds=0,$max&chbh=a&chxt=y&chxr=0,0,$max";
+
+	my $launch = sprintf $url, join(",",@data);
+	print $launch, "\n";
+	# `git web--browse "$launch"`
 }
 
 # gnuplot
@@ -76,111 +120,99 @@ sub gnuplot_chart($;$) {
 		$dataset = gather_data($options);
 	}
 
+	my @keys = sort keys %$dataset;
+	my $from = $keys[0];
+	my $to = $keys[@keys-1];
+	my $data = '';
+	while (my $key = shift @keys) {
+		$data .= "$key $dataset->{$key}\n";
+	}
 	my $max = $options->{max};
-	my $from = $options->{from};
-	my $to = $options->{to};
-	my $step = $options->{step};
 
 	# TODO allow customization
 	# in particular, detect (lack of) display and set term to dumb accordingly
 	my $termcmd = $options->{gnuplot_term};
+
 	my $plotsetup = $options->{gnuplot_setup};
-	$plotsetup .="\nset yrange [0:$max]\nset xrange [$from:$to]";
+	$plotsetup .= "\nset yrange [0:$max]\n";
+	$plotsetup .= "set xrange ['$from':'$to']\n";
 	my $plotstyle = $options->{gnuplot_style};
 	my $plotoptions = $options->{gnuplot_plotwith};
-	my $data = join("\n", reverse @$dataset);
 
 	open my $gp, "|gnuplot -persist";
 
-	print $gp <<GPCMD
-	$termcmd
-	$plotsetup
-	$plotstyle
-	plot "-" $plotoptions
-	$data
+	my $gp_script = <<GPCMD
+$termcmd
+set xdata time
+set timefmt "%s"
+set format x "%b\\n%Y"
+$plotsetup
+$plotstyle
+plot "-" using 1:2 $plotoptions
+$data
 GPCMD
+	;
 
-}
-
-sub parse_from($) {
-	my $from = shift;
-	if ($from =~/^\d+$/) {
-		return 0 + $from;
-	} else {
-		# TODO
-		warn "non-numeric from not supported yet\n";
-	}
-}
-
-sub parse_to($) {
-	my $to = shift;
-	if ($to =~/^\d+$/) {
-		return 0 + $to;
-	} else {
-		# TODO
-		warn "non-numeric to not supported yet\n";
-	}
-}
-
-sub parse_step($) {
-	my $step = shift;
-	if ($step =~/^\d+$/) {
-		return 0 + $step;
-	} else {
-		return 1 if $step eq 'daily';
-		return 7 if $step eq 'weekly';
-		return 30 if $step eq 'monthly';
-	}
+	print STDOUT $gp_script;
+	print $gp $gp_script;
+	close $gp;
 }
 
 # some defaults
 my %options = (
-	from => 0,
-	to => 31,
 	step => 1,
+	cmdline => [],
 	# charting/plotting options
 	plotter => \&gnuplot_chart,
 	chart_height => 144,
 	gnuplot_term => '',
 	gnuplot_setup => "set nokey",
-	gnuplot_style => 'set style fill solid 1.0 border -1',
-	gnuplot_plotwith => 'with boxes',
+	gnuplot_style => 'set style data histeps',
+	gnuplot_plotwith => '',
 );
 
-my $daily=0;
-my $weekly=0;
-my $monthly=0;
+my %steps = (
+	daily => 1,
+	weekly => 7,
+	monthly => 30,
+);
 
-my $from=0;
-my $to=0;
-my $step=0;
+sub parse_step(@) {
+	my $key = shift;
+	my $step = shift;
+	if (exists $steps{$key}) {
+		$options{step} = $steps{$key};
+		return;
+	}
+	die "this can't happen ($key)" unless $key eq 'step';
 
+	if ($step =~/^\d+$/) {
+		$options{step} = 0 + $step;
+		return
+	} else {
+		if (exists $steps{$step}) {
+			$options{step} = $steps{$step};
+			return;
+		}
+		die "unknown step $step";
+	}
+}
+
+# read our options first
+Getopt::Long::Configure('pass_through');
 GetOptions(
-	daily => \$daily,
-	weekly => \$weekly,
-	monthly => \$monthly,
-	'from=s' => \$from,
-	'to=s' => \$to,
-	'step=s' => \$step,
+	'daily' => \&parse_step,
+	'weekly' => \&parse_step,
+	'monthly' => \&parse_step,
+	'step=s' => sub { parse_step(@_) },
 	google => sub { $options{plotter} = \&google_chart },
 	gnuplot => sub { $options{plotter} = \&gnuplot_chart },
 );
 
-$options{from} = parse_from($from) if $from;
-
-if ($monthly) {
-	$options{to} = $options{from} + 365;
-	$options{step} = 30;
-} elsif ($weekly) {
-	$options{to} = $options{from} + 6*30;
-	$options{step} = 30;
-} elsif ($daily) {
-	$options{to} = $options{from} + 31;
-	$options{step} = 1;
+# if anything was left, check for log options
+if (@ARGV) {
+	$options{cmdline} = \@ARGV;
 }
-
-$options{to} = parse_to($to) if $to;
-$options{step} = parse_step($step) if $step;
 
 die "step must be strictly positive!" unless $options{step} > 0;
 
