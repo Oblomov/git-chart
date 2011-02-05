@@ -139,6 +139,7 @@ my %options = (
 	to => 31,
 	step => 1,
 	# charting/plotting options
+	plotter => \&gnuplot_chart,
 	chart_height => 144,
 	gnuplot_term => '',
 	gnuplot_setup => "set nokey",
@@ -161,6 +162,8 @@ GetOptions(
 	'from=s' => \$from,
 	'to=s' => \$to,
 	'step=s' => \$step,
+	google => sub { $options{plotter} = \&google_chart },
+	gnuplot => sub { $options{plotter} = \&gnuplot_chart },
 );
 
 $options{from} = parse_from($from) if $from;
@@ -181,4 +184,4 @@ $options{step} = parse_step($step) if $step;
 
 die "step must be strictly positive!" unless $options{step} > 0;
 
-gnuplot_chart(\%options);
+$options{plotter}->(\%options);
