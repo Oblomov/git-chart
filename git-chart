@@ -168,12 +168,22 @@ sub gnuplot_chart($;$) {
 	my @keys = sort keys %$dataset;
 	my $step=$options->{step};
 	my $from = $keys[0];
-	my $to = $keys[@keys-1];
+	my $to = $keys[$#keys];
+
 	my $data = '';
 	while (my $key = shift @keys) {
 		$data .= "$key $dataset->{$key}\n";
 	}
 	my $max = $options->{max};
+
+	# add a fake datapoint lest to prevent the last
+	# datum from becoming invibile with style data steps
+	if (exists $steps{$step}) {
+		$to += $steps{$step};
+	} else {
+		$to += $step;
+	}
+	$data .="$to 0\n";
 
 	# TODO allow customization
 	# in particular, detect (lack of) display and set term to dumb accordingly
@@ -193,7 +203,7 @@ sub gnuplot_chart($;$) {
 		$formatx = "%d\\n%b";
 		$ticks = $steps{daily};
 	} else {
-		$formatx = "%H:%M";
+		$formatx = "%H\\n%d";
 		$ticks = $steps{hourly};
 	}
 	$plotsetup .= "set format x \"$formatx\"\n";
@@ -227,7 +237,7 @@ my %options = (
 	chart_height => 144,
 	gnuplot_term => '',
 	gnuplot_setup => "set nokey",
-	gnuplot_style => 'set style data histeps',
+	gnuplot_style => 'set style data steps',
 	gnuplot_plotwith => '',
 );
 
