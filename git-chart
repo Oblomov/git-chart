@@ -32,7 +32,28 @@ my %trunc = (
 
 sub usage() {
 	# TODO
-	print "Usage: git chart\n";
+	print <<EOU
+Usage: git chart [options...] [log specs...]
+
+Creates a chart plotting the distribution over time of the commits
+specified as <log specs>. By default, commits are grouped by hour, day,
+week, month or year depending on the time spanned, but this can be
+controlled by the user.
+
+Options:
+	--hourly, --daily, --weekly, --monthly, --yearly:
+		force a specific commit grouping
+	--step=<integer>:
+		force commits to be grouped each <integer> seconds
+	--gnuplot:
+		produce a chart with gnuplot (default)
+	--google:
+		produce a chart with Google Charts
+	--chart-height=<integer>:
+		set the Google Charts height; the width is set
+		to a 4:3 ratio (default: 100)
+EOU
+
 }
 
 sub gather_data($) {
@@ -264,6 +285,7 @@ sub parse_step(@) {
 	}
 }
 
+my $help = 0;
 # read our options first
 Getopt::Long::Configure('pass_through');
 GetOptions(
@@ -276,7 +298,13 @@ GetOptions(
 	'chart-height=i' => sub { $options{chart_height} = $_[1]},
 	google => sub { $options{plotter} = \&google_chart },
 	gnuplot => sub { $options{plotter} = \&gnuplot_chart },
+	'help|?' => \$help,
 );
+
+if ($help) {
+	usage();
+	exit;
+}
 
 # if anything was left, check for log options
 if (@ARGV) {
