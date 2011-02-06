@@ -1,19 +1,13 @@
 #!/usr/bin/perl
 
 # List of general TODO
-# * autodetect optimal frequency depending on date range for commits
 # * default to something else than "the whole history", probably
 # * if no commits are specified and a commit grouping step is specified,
 #   limit commits proportionally (e.g. --daily => one week worth of commits)
-# * find a better way to group commits, the current is a little too inaccurate
-#
-# Most of the mentioned TODOs require either some peeking at the commits
-# or some other form of pre/post-processing. For both it's probably better
-# to just slurp them at once and then think about the grouping
 
 use strict;
 use warnings;
-use POSIX qw(ceil);
+use POSIX qw(ceil strftime);
 use Getopt::Long;
 use Date::Parse;
 
@@ -27,6 +21,13 @@ my %steps = (
 	yearly => 12*30*$SECS_PER_DAY,
 );
 
+my %trunc = (
+	hourly => "%Y-%m-%d %H:00",
+	daily => "%Y-%m-%d 00:00",
+	monthly => "%Y-%m-01 00:00",
+	yearly => "%Y-01-01 00:00",
+);
+
 sub usage() {
 	# TODO
 	print "Usage: git chart\n";
@@ -34,47 +35,83 @@ sub usage() {
 
 sub gather_data($) {
 	my $options = shift;
-	my %dataset;
 
 	print "Gathering data ...\n";
 
-	my $groups = 0;
-	my $commits = 0;
+	my @commits;
 
-	my $step=$options->{step};
-
-	open my $fd, '-|', qw(git log --date=raw), '--pretty=%ad %s', @{$options->{cmdline}};
+	open my $fd, '-|', qw(git log --date=local), '--pretty=%ad,%s', @{$options->{cmdline}};
 	die "failed to get revs" unless $fd;
 	while (<$fd>) {
 		chomp;
-		$commits += 1;
-		my ($date, $tz, $sub) = split ' ', $_, 3;
-		# TODO use $tz
+		my ($date, $sub) = split ',', $_, 2;
 
-		my $key = $date - ($date % $step);
+		push @commits, str2time($date);
+
+	}
+	close $fd;
+
+	@commits = sort @commits;
+
+	print "...done, " . @commits . " commits.\n";
+
+	my $gap = $commits[$#commits] - $commits[0];
+
+	my $step;
+	if (defined $options->{step}) {
+		$step = $options->{step};
+	} else {
+		$step = $gap > $steps{yearly} ? 'monthly' :
+			$gap > $steps{monthly} ? 'weekly' :
+			$gap > $steps{weekly}/2 ? 'daily' :
+			'hourly'
+		;
+		$options->{step} = $step;
+	}
+
+	# truncate each commit (date) to the wanted step
+	# e.g. if the step is 'monthly', then commit YYYY/MM/DD
+	# maps to YYYY/MM
+	my %dataset;
+	for my $commit (@commits) {
+		my $key;
+		if (exists $trunc{$step}) {
+			# LOL -- no, seriously, is there a smarter way to do this?
+			$key = str2time(strftime($trunc{$step}, localtime($commit)));
+		} else {
+			$key = $commit - ($commit % $step);
+		}
 		if (exists $dataset{$key}) {
 			$dataset{$key} += 1;
 		} else {
 			$dataset{$key} = 1;
-			$groups += 1;
 		}
 	}
-	close $fd;
-
-	print "...done, $commits commits in $groups groups.\n";
 
 	# fill missing steps and find max
 	my @keys = sort keys %dataset;
-	my $last = pop @keys;
+
+	# ensure numeric step, taking into account
+	# that our numerical steps are approximate
+	my $tolerance = 0;
+	if (exists $steps{$step}) {
+		$step = $steps{$step};
+		$tolerance = $step/2;
+	}
+
 	my $max = 0;
-	while (my $key = shift @keys) {
+	my $key = shift @keys;
+	while (1) {
 		$max = $dataset{$key} if $max < $dataset{$key};
-		my $next = $key + $step;
-		while (! exists $dataset{$next}) {
-			$dataset{$next} = 0;
-			$next += $step;
-			last if $next >= $last;
+		my $next_step = $key + $step;
+		my $next = shift @keys;
+		last unless $next;
+		while (abs($next - $next_step) > $tolerance) {
+			# next step is too far away
+			$dataset{$next_step} = 0;
+			$next_step += $step;
 		}
+		$key = $next;
 	}
 
 	$options->{max} = $max;
@@ -184,7 +221,6 @@ GPCMD
 
 # some defaults
 my %options = (
-	step => $SECS_PER_DAY,
 	cmdline => [],
 	# charting/plotting options
 	plotter => \&gnuplot_chart,
@@ -199,7 +235,7 @@ sub parse_step(@) {
 	my $key = shift;
 	my $step = shift;
 	if (exists $steps{$key}) {
-		$options{step} = $steps{$key};
+		$options{step} = $key;
 		return;
 	}
 	die "this can't happen ($key)" unless $key eq 'step';
@@ -209,7 +245,7 @@ sub parse_step(@) {
 		return
 	} else {
 		if (exists $steps{$step}) {
-			$options{step} = $steps{$step};
+			$options{step} = $step;
 			return;
 		}
 		die "unknown step $step";
@@ -235,6 +271,6 @@ if (@ARGV) {
 	$options{cmdline} = \@ARGV;
 }
 
-die "step must be strictly positive!" unless $options{step} > 0;
+die "step must be strictly positive!" if defined $options{step} and not $options{step} > 0;
 
 $options{plotter}->(\%options);
