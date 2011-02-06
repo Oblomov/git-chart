@@ -197,7 +197,7 @@ sub gnuplot_chart($;$) {
 	while (my $key = shift @keys) {
 		$data .= "$key $dataset->{$key}\n";
 	}
-	my $max = $options->{max};
+	my $max = $options->{max} + 1;
 
 	# add a fake datapoint lest to prevent the last
 	# datum from becoming invibile with style data steps
@@ -222,7 +222,7 @@ sub gnuplot_chart($;$) {
 	} elsif ($to - $from > $steps{monthly}) {
 		$formatx = "%b\\n%Y";
 		$ticks = $steps{monthly};
-	} elsif ($to - $from > 2*$steps{daily}) {
+	} elsif ($to - $from > $steps{weekly}/2) {
 		$formatx = "%d\\n%b";
 		$ticks = $steps{daily};
 	} else {
