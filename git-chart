@@ -311,6 +311,4 @@ if (@ARGV) {
 	$options{cmdline} = \@ARGV;
 }
 
-die "step must be strictly positive!" if defined $options{step} and not $options{step} > 0;
-
 $options{plotter}->(\%options);
