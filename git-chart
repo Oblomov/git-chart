@@ -101,6 +101,13 @@ sub gather_data($) {
 		if (exists $trunc{$step}) {
 			# LOL -- no, seriously, is there a smarter way to do this?
 			$key = str2time(strftime($trunc{$step}, localtime($commit)));
+		} elsif ($step eq 'weekly') {
+			# horrible special case: do it daily, and then subtract
+			# as many days as necessary to go back to the previous sunday
+			# TODO config week start
+			$key = str2time(strftime($trunc{daily}, localtime($commit)));
+			my $wd = strftime("%w", localtime($commit));
+			$key -= $wd*$steps{daily};
 		} else {
 			$key = $commit - ($commit % $step);
 		}
