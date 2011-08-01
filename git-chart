@@ -12,6 +12,8 @@ use warnings;
 use POSIX qw(ceil strftime);
 use Getopt::Long;
 use Date::Parse;
+use File::Spec;
+use File::Temp;
 
 my $SECS_PER_DAY = 24*3600;
 
@@ -268,6 +270,14 @@ sub gnuplot_chart($;$) {
 	my $plotstyle = $options->{gnuplot_style};
 	my $plotoptions = $options->{gnuplot_plotwith};
 
+	my $lastcolumn = $#authors + 3;
+	my $datafile = File::Temp->new(
+		TEMPLATE => 'git-chart-XXXXXX',
+		DIR => File::Spec->tmpdir()
+	);
+
+	print $datafile $data;
+
 	open my $gp, "|gnuplot -persist";
 
 	my $gp_script = <<GPCMD
@@ -276,8 +286,7 @@ set xdata time
 set timefmt "%s"
 $plotsetup
 $plotstyle
-plot "-" using 1:2 $plotoptions
-$data
+plot "$datafile" using 1:2 $plotoptions
 GPCMD
 	;
 
