@@ -203,9 +203,9 @@ sub gnuplot_chart($;$) {
 	my $from = $keys[0];
 	my $to = $keys[$#keys];
 
-	my $data = '';
+	my $data = "date\tcommits\n";
 	while (my $key = shift @keys) {
-		$data .= "$key $dataset->{$key}\n";
+		$data .= "$key\t$dataset->{$key}\n";
 	}
 	my $max = $options->{max} + 1;
 
@@ -216,7 +216,7 @@ sub gnuplot_chart($;$) {
 	} else {
 		$to += $step;
 	}
-	$data .="$to 0\n";
+	$data .="$to\t0\n";
 
 	# TODO allow customization
 	# in particular, detect (lack of) display and set term to dumb accordingly
