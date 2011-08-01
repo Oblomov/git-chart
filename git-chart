@@ -78,6 +78,8 @@ sub gather_data($) {
 
 	print "...done, " . @commits . " commits.\n";
 
+	die "No commits!" if (@commits < 1);
+
 	my $gap = $commits[$#commits] - $commits[0];
 
 	my $step;
