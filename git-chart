@@ -63,24 +63,24 @@ sub gather_data($) {
 
 	my @commits;
 
-	open my $fd, '-|', qw(git log --date=local), '--pretty=%ad%x00%s', @{$options->{cmdline}};
+	open my $fd, '-|', qw(git log --date=local), '--pretty=%aN%x00%ad%x00%s', @{$options->{cmdline}};
 	die "failed to get revs" unless $fd;
 	while (<$fd>) {
 		chomp;
-		my ($date, $sub) = split '\0', $_, 2;
+		my ($author, $date, $sub) = split '\0', $_, 3;
 
-		push @commits, str2time($date);
+		push @commits, { date => str2time($date), author => $author };
 
 	}
 	close $fd;
 
-	@commits = sort @commits;
+	@commits = sort { $a->{date} cmp $b->{date} } @commits;
 
 	print "...done, " . @commits . " commits.\n";
 
 	die "No commits!" if (@commits < 1);
 
-	my $gap = $commits[$#commits] - $commits[0];
+	my $gap = $commits[$#commits]->{date} - $commits[0]->{date};
 
 	my $step;
 	if (defined $options->{step}) {
@@ -99,19 +99,20 @@ sub gather_data($) {
 	# maps to YYYY/MM
 	my %dataset;
 	for my $commit (@commits) {
+		my $date = $commit->{date};
 		my $key;
 		if (exists $trunc{$step}) {
 			# LOL -- no, seriously, is there a smarter way to do this?
-			$key = str2time(strftime($trunc{$step}, localtime($commit)));
+			$key = str2time(strftime($trunc{$step}, localtime($date)));
 		} elsif ($step eq 'weekly') {
 			# horrible special case: do it daily, and then subtract
 			# as many days as necessary to go back to the previous sunday
 			# TODO config week start
-			$key = str2time(strftime($trunc{daily}, localtime($commit)));
-			my $wd = strftime("%w", localtime($commit));
+			$key = str2time(strftime($trunc{daily}, localtime($date)));
+			my $wd = strftime("%w", localtime($date));
 			$key -= $wd*$steps{daily};
 		} else {
-			$key = $commit - ($commit % $step);
+			$key = $date - ($date % $step);
 		}
 		if (exists $dataset{$key}) {
 			$dataset{$key} += 1;
