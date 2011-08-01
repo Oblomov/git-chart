@@ -5,7 +5,7 @@
 # * if no commits are specified and a commit grouping step is specified,
 #   limit commits proportionally (e.g. --daily => one week worth of commits)
 # * allow the steps to be counted from the most recent rather than from the
-#   oldest comment
+#   oldest commit
 
 use strict;
 use warnings;
