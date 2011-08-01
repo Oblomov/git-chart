@@ -222,7 +222,7 @@ sub gnuplot_chart($;$) {
 	# in particular, detect (lack of) display and set term to dumb accordingly
 	my $termcmd = $options->{gnuplot_term};
 
-	my $plotsetup = $options->{gnuplot_setup};
+	my $plotsetup = $options->{gnuplot_setup} || 'set nokey';
 	$plotsetup .= "\nset yrange [0:$max]\n";
 	$plotsetup .= "set xrange ['$from':'$to']\n";
 	my ($formatx, $ticks);
@@ -269,7 +269,7 @@ my %options = (
 	plotter => \&gnuplot_chart,
 	chart_height => 144,
 	gnuplot_term => '',
-	gnuplot_setup => "set nokey",
+	gnuplot_setup => '',
 	gnuplot_style => 'set style data steps',
 	gnuplot_plotwith => '',
 );
