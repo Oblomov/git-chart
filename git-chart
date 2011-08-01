@@ -208,7 +208,7 @@ sub gnuplot_chart($;$) {
 	}
 
 	my $authors = delete $dataset->{_authors};
-	my @authors = sort { $authors->{$a} <=> $authors->{$b} } keys %$authors;
+	my @authors = sort { $authors->{$b} <=> $authors->{$a} } keys %$authors;
 	$authors = join "\t", map  { "\"$_\"" } @authors;
 
 	my @keys = sort keys %$dataset;
