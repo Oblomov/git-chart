@@ -270,7 +270,6 @@ sub gnuplot_chart($;$) {
 	my $plotstyle = $options->{gnuplot_style};
 	my $plotoptions = $options->{gnuplot_plotwith};
 
-	my $lastcolumn = $#authors + 3;
 	my $datafile = File::Temp->new(
 		TEMPLATE => 'git-chart-XXXXXX',
 		DIR => File::Spec->tmpdir()
@@ -280,13 +279,23 @@ sub gnuplot_chart($;$) {
 
 	open my $gp, "|gnuplot -persist";
 
+	my $plotcmd;
+	if (@authors == 1) {
+		$plotcmd = "plot '$datafile' using 1:3";
+	} else {
+		my $lastcolumn = $#authors + 3;
+		$plotsetup .= "set key outside autotitle columnheader\n";
+		$plotcmd = "plot '$datafile' using 1:2 notitle";
+		$plotcmd.= ", for [a=3:$lastcolumn] '' using 1:a";
+	}
+
 	my $gp_script = <<GPCMD
 $termcmd
 set xdata time
 set timefmt "%s"
 $plotsetup
 $plotstyle
-plot "$datafile" using 1:2 $plotoptions
+$plotcmd
 GPCMD
 	;
 
