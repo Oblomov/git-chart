@@ -248,7 +248,9 @@ sub gnuplot_chart($;$) {
 	# in particular, detect (lack of) display and set term to dumb accordingly
 	my $termcmd = $options->{gnuplot_term};
 
-	my $plotsetup = $options->{gnuplot_setup} || 'set nokey';
+	my $plotsetup = $options->{gnuplot_setup} ||
+		@authors == 1 ? 'set nokey' :
+		'set key outside autotitle columnheader' ;
 	$plotsetup .= "\nset yrange [0:$max]\n";
 	$plotsetup .= "set xrange ['$from':'$to']\n";
 	my ($formatx, $ticks);
@@ -279,13 +281,10 @@ sub gnuplot_chart($;$) {
 
 	open my $gp, "|gnuplot -persist";
 
-	my $plotcmd;
-	if (@authors == 1) {
-		$plotcmd = "plot '$datafile' using 1:3";
-	} else {
+	my $plotcmd = "plot '$datafile' using 1:2";
+	if (@authors > 1) {
 		my $lastcolumn = $#authors + 3;
-		$plotsetup .= "set key outside autotitle columnheader\n";
-		$plotcmd = "plot '$datafile' using 1:2 notitle";
+		$plotcmd.= " notitle";
 		$plotcmd.= ", for [a=3:$lastcolumn] '' using 1:a";
 	}
 
