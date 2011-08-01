@@ -63,11 +63,11 @@ sub gather_data($) {
 
 	my @commits;
 
-	open my $fd, '-|', qw(git log --date=local), '--pretty=%ad,%s', @{$options->{cmdline}};
+	open my $fd, '-|', qw(git log --date=local), '--pretty=%ad%x00%s', @{$options->{cmdline}};
 	die "failed to get revs" unless $fd;
 	while (<$fd>) {
 		chomp;
-		my ($date, $sub) = split ',', $_, 2;
+		my ($date, $sub) = split '\0', $_, 2;
 
 		push @commits, str2time($date);
 
