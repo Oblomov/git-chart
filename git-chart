@@ -14,6 +14,7 @@ use Getopt::Long;
 use Date::Parse;
 use File::Spec;
 use File::Temp;
+use List::Util 'max';
 
 my $SECS_PER_DAY = 24*3600;
 
@@ -244,15 +245,6 @@ sub gnuplot_chart($;$) {
 	}
 	$data .= "\n";
 
-	# TODO allow customization
-	# in particular, detect (lack of) display and set term to dumb accordingly
-	my $termcmd = $options->{gnuplot_term};
-
-	my $plotsetup = $options->{gnuplot_setup} ||
-		@authors == 1 ? 'set nokey' :
-		'set key outside autotitle columnheader' ;
-	$plotsetup .= "\nset yrange [0:$max]\n";
-	$plotsetup .= "set xrange ['$from':'$to']\n";
 	my ($formatx, $ticks);
 	if ($to - $from > $steps{yearly}) {
 		$formatx = "%Y";
@@ -267,8 +259,33 @@ sub gnuplot_chart($;$) {
 		$formatx = "%H\\n%d";
 		$ticks = $steps{hourly};
 	}
+
+	my $nticks = ceil(($to - $from)/$ticks);
+
+	# Default terminal sizing. Rationale:
+	# * authors are limited to 8 rows, so the resulting number of columns
+	#   should fit within some scaled 800 pixels. 
+	#   and assuming that each colum takes about 600 scaled pixels
+	my $sizemul = max(1, ceil(ceil(3*@authors/8)/4));
+	print "# $sizemul \n";
+	$sizemul = max($sizemul, $nticks/8);
+	print "# $sizemul \n";
+	my $xres = 800*$sizemul;
+	my $yres = 450*$sizemul;
+
+	# TODO allow customization
+	# in particular, detect (lack of) display and set term to dumb accordingly
+	my $termcmd = $options->{gnuplot_term} ||
+		"set terminal GNUTERM enhanced size $xres,$yres\n";
+
+	my $plotsetup = $options->{gnuplot_setup} ||
+		@authors == 1 ? 'set nokey' :
+		'set key above autotitle columnheader maxrows 8' ;
+	$plotsetup .= "\nset yrange [0:$max]\n";
+	$plotsetup .= "set xrange ['$from':'$to']\n";
 	$plotsetup .= "set format x \"$formatx\"\n";
-	$plotsetup .= "set xtics $ticks\n";
+	$plotsetup .= "set xtics axis out nomirror $ticks\n";
+	$plotsetup .= "set ytics axis out nomirror\n";
 	my $plotstyle = $options->{gnuplot_style};
 	my $plotoptions = $options->{gnuplot_plotwith};
 
