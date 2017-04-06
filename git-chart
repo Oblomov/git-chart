@@ -1,5 +1,12 @@
 #!/usr/bin/perl
 
+# git-chart: plot a distribution of commits over time
+#
+# Copyright (C) 2011-2017 Giuseppe Bilotta <giuseppe.bilotta@gmail.com>
+#
+# Licensed under the Mozilla Public License, version 2.0
+# Refer to the attached LICENSE file for details.
+
 # List of general TODO
 # * default to something else than "the whole history", probably
 # * if no commits are specified and a commit grouping step is specified,
