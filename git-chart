@@ -23,6 +23,8 @@ use File::Spec;
 use File::Temp;
 use List::Util 'max';
 
+our $VERSION = '17.04';
+
 my $SECS_PER_DAY = 24*3600;
 
 my %steps = (
