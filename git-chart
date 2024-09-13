@@ -273,12 +273,18 @@ sub gnuplot_chart($;$) {
 	# * authors are limited to 8 rows, so the resulting number of columns
 	#   should fit within some scaled 800 pixels. 
 	#   and assuming that each colum takes about 600 scaled pixels
-	my $sizemul = max(1, ceil(ceil(3*@authors/8)/4));
-	print "# $sizemul \n";
-	$sizemul = max($sizemul, $nticks/8);
-	print "# $sizemul \n";
-	my $xres = 800*$sizemul;
-	my $yres = 450*$sizemul;
+	my ($xres, $yres);
+	if ($ENV{GNUTERM} ne 'dumb') {
+		my $sizemul = max(1, ceil(ceil(3*@authors/8)/4));
+		print "# $sizemul \n";
+		$sizemul = max($sizemul, $nticks/8);
+		print "# $sizemul \n";
+		$xres = 800*$sizemul;
+		$yres = 450*$sizemul;
+	} else {
+		chomp($xres = `tput cols`);
+		chomp($yres = `tput lines`);
+	}
 
 	# TODO allow customization
 	# in particular, detect (lack of) display and set term to dumb accordingly
