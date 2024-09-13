@@ -17,8 +17,8 @@
 use strict;
 use warnings;
 use POSIX qw(ceil strftime);
+use DateTime;
 use Getopt::Long;
-use Date::Parse;
 use File::Spec;
 use File::Temp;
 use List::Util 'max';
@@ -28,18 +28,12 @@ our $VERSION = '17.04';
 my $SECS_PER_DAY = 24*3600;
 
 my %steps = (
-	hourly => 3600,
-	daily => $SECS_PER_DAY,
-	weekly => 7*$SECS_PER_DAY,
-	monthly => 30*$SECS_PER_DAY,
-	yearly => 12*30*$SECS_PER_DAY,
-);
-
-my %trunc = (
-	hourly => "%Y-%m-%d %H:00",
-	daily => "%Y-%m-%d 00:00",
-	monthly => "%Y-%m-01 00:00",
-	yearly => "%Y-01-01 00:00",
+	hour => 3600,
+	day => $SECS_PER_DAY,
+	week => 7*$SECS_PER_DAY,
+	month => 30*$SECS_PER_DAY,
+	quarter => 4*30*$SECS_PER_DAY,
+	year => 12*30*$SECS_PER_DAY,
 );
 
 sub usage() {
@@ -75,57 +69,51 @@ sub gather_data($) {
 
 	my @commits;
 
-	open my $fd, '-|', qw(git log --date=local), '--pretty=%aN%x00%ad%x00%s', @{$options->{cmdline}};
+	open my $fd, '-|', qw(git log), '--pretty=%aN%x00%at%x00%ai%x00%s', @{$options->{cmdline}};
 	die "failed to get revs" unless $fd;
 	while (<$fd>) {
 		chomp;
-		my ($author, $date, $sub) = split '\0', $_, 3;
+		my ($author, $epoch, $date, $sub) = split '\0', $_, 4;
 
-		push @commits, { date => str2time($date), author => $author };
+		push @commits, { epoch => ($epoch+0), date => $date, author => $author };
 
 	}
 	close $fd;
 
-	@commits = sort { $a->{date} cmp $b->{date} } @commits;
+	@commits = sort { $a->{epoch} cmp $b->{epoch} } @commits;
 
 	print "...done, " . @commits . " commits.\n";
 
 	die "No commits!" if (@commits < 1);
 
-	my $gap = $commits[$#commits]->{date} - $commits[0]->{date};
+	my $gap = $commits[$#commits]->{epoch} - $commits[0]->{epoch};
 
 	my $step;
 	if (defined $options->{step}) {
 		$step = $options->{step};
 	} else {
-		$step = $gap > $steps{yearly} ? 'monthly' :
-			$gap > $steps{monthly} ? 'weekly' :
-			$gap > $steps{weekly}/2 ? 'daily' :
-			'hourly'
+		$step = $gap > $steps{year} ? 'month' :
+			$gap > $steps{month} ? 'week' :
+			$gap > $steps{week}/2 ? 'day' :
+			'hour'
 		;
 		$options->{step} = $step;
 	}
 
 	# truncate each commit (date) to the wanted step
-	# e.g. if the step is 'monthly', then commit YYYY/MM/DD
-	# maps to YYYY/MM
+	# e.g. if the step is 'monthly', then commit YYYY-MM-DD
+	# maps to YYYY-MM
 	my %dataset;
 	for my $commit (@commits) {
-		my $date = $commit->{date};
+		my $epoch = $commit->{epoch};
 		my $author = $commit->{author};
 		my $key;
-		if (exists $trunc{$step}) {
-			# LOL -- no, seriously, is there a smarter way to do this?
-			$key = str2time(strftime($trunc{$step}, localtime($date)));
-		} elsif ($step eq 'weekly') {
-			# horrible special case: do it daily, and then subtract
-			# as many days as necessary to go back to the previous sunday
-			# TODO config week start
-			$key = str2time(strftime($trunc{daily}, localtime($date)));
-			my $wd = strftime("%w", localtime($date));
-			$key -= $wd*$steps{daily};
+		if (exists $steps{$step}) {
+			my $dt = DateTime->from_epoch( epoch => $epoch );
+			$dt->truncate(to => $step);
+			$key = $dt->epoch();
 		} else {
-			$key = $date - ($date % $step);
+			$key = $epoch - ($epoch % $step);
 		}
 
 		# make sure the value is a hash
@@ -241,7 +229,7 @@ sub gnuplot_chart($;$) {
 	}
 	my $max = $options->{max} + 1;
 
-	# add a fake datapoint lest to prevent the last
+	# add a fake datapoint to prevent the last
 	# datum from becoming invibile with style data steps
 	if (exists $steps{$step}) {
 		$to += $steps{$step};
@@ -254,19 +242,29 @@ sub gnuplot_chart($;$) {
 	}
 	$data .= "\n";
 
-	my ($formatx, $ticks);
-	if ($to - $from > $steps{yearly}) {
+	print $data;
+
+	my ($formatx, $ticks, $mticks);
+	if ($to - $from > $steps{year}) {
 		$formatx = "%Y";
-		$ticks = $steps{yearly};
-	} elsif ($to - $from > $steps{monthly}) {
+		$ticks = $steps{year};
+		$mticks = 12;
+	} elsif ($to - $from > $steps{quarter}) {
 		$formatx = "%b\\n%Y";
-		$ticks = $steps{monthly};
-	} elsif ($to - $from > $steps{weekly}/2) {
+		$ticks = $steps{quarter};
+		$mticks = 4;
+	} elsif ($to - $from > $steps{month}) {
+		$formatx = "%b\\n%Y";
+		$ticks = $steps{month};
+		$mticks = "";
+	} elsif ($to - $from > $steps{week}/2) {
 		$formatx = "%d\\n%b";
-		$ticks = $steps{daily};
+		$ticks = $steps{day};
+		$mticks = ""
 	} else {
 		$formatx = "%H\\n%d";
-		$ticks = $steps{hourly};
+		$ticks = $steps{hour};
+		$mticks = ""
 	}
 
 	my $nticks = ceil(($to - $from)/$ticks);
@@ -294,6 +292,8 @@ sub gnuplot_chart($;$) {
 	$plotsetup .= "set xrange ['$from':'$to']\n";
 	$plotsetup .= "set format x \"$formatx\"\n";
 	$plotsetup .= "set xtics axis out nomirror $ticks\n";
+	$plotsetup .= "set mxtics $mticks\n" if $mticks;
+
 	$plotsetup .= "set ytics axis out nomirror\n";
 	my $plotstyle = $options->{gnuplot_style};
 	my $plotoptions = $options->{gnuplot_plotwith};
