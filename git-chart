@@ -16,6 +16,7 @@
 
 use strict;
 use warnings;
+use utf8;
 use POSIX qw(ceil strftime);
 use DateTime;
 use Getopt::Long;
@@ -26,6 +27,8 @@ use List::Util 'max';
 our $VERSION = '17.04';
 
 my $SECS_PER_DAY = 24*3600;
+
+my $ZWSP = chr(0x200B);
 
 my %steps = (
 	hour => 3600,
@@ -339,7 +342,7 @@ GPCMD
 
 sub wrap_year($) {
 	my $year = shift;
-	return "<---$year--->";
+	return "{──($year)──}";
 }
 
 # unicode blocks
@@ -366,7 +369,7 @@ sub unicode_chart($;$) {
 			my $m = ceil(8*$ncommits/$max);
 			$char = chr(0x2580+$m);
 		}
-		$data .= $char;
+		$data .= $char . $ZWSP;
 	}
 
 	binmode(STDOUT, ":encoding(UTF-8)");
