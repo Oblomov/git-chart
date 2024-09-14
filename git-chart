@@ -56,8 +56,6 @@ Options:
 		force commits to be grouped each <integer> seconds
 	--gnuplot:
 		produce a chart with gnuplot (default)
-	--google:
-		produce a chart with Google Charts
 	--unicode:
 		produce a chart with Unicode Block Elements
 	--chart-height=<integer>:
@@ -167,39 +165,6 @@ sub gather_data($) {
 # (array and hash ref respectively).
 # when called with a single parameter, it is assumed to be an options hash ref, and the dataset is 
 # created by calling gather_data with the passed options.
-
-# google chart API
-# TODO needs a lot of customization
-sub google_chart($;$) {
-	my $dataset = shift;
-	my $options = shift;
-	if (! defined $options) {
-		$options = $dataset;
-		$dataset = gather_data($options);
-	}
-
-	my $height=$options->{chart_height};
-	my $max = $options->{max};
-
-	my @keys = sort keys %$dataset;
-	pop @keys; # get rid of _authors
-
-	my $from = $keys[0];
-	my $to = $keys[@keys-1];
-
-	my @data;
-	while (my $key = shift @keys) {
-		push @data, $dataset->{$key}{_commits};
-	}
-
-	my $width=ceil(4*$height/3);
-
-	my $url="https://chart.googleapis.com/chart?chs=${width}x${height}&cht=bvg&chd=t:%s&chds=0,$max&chbh=a&chxt=y&chxr=0,0,$max";
-
-	my $launch = sprintf $url, join(",",@data);
-	print $launch, "\n";
-	# `git web--browse "$launch"`
-}
 
 # gnuplot
 sub gnuplot_chart($;$) {
@@ -440,7 +405,6 @@ GetOptions(
 	'yearly' => \&parse_step,
 	'step=s' => sub { parse_step(@_) },
 	'chart-height=i' => sub { $options{chart_height} = $_[1]},
-	google => sub { $options{plotter} = \&google_chart },
 	gnuplot => sub { $options{plotter} = \&gnuplot_chart },
 	unicode => sub { $options{plotter} = \&unicode_chart },
 	'help|?' => \$help,
